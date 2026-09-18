@@ -1,6 +1,35 @@
-# 🦴 Tableau de bord Paléontologie — Bassin Sénégalo-Mauritanien
+# 🦴 Ichnosen — Tableau de bord Paléontologie (Bassin Sénégalo-Mauritanien)
 
 Visualisation interactive des foraminifères découverts sur les sites côtiers sénégalais (Popenguine 1998, Toubab Dialaw 2000, Lac Retba 2009).
+
+Deux implémentations coexistent dans ce dépôt :
+
+- **`web/`** — application React (Vite + TypeScript), design Ichnosen, en développement actif. C'est la version cible.
+- **Streamlit** (fichiers à la racine) — prototype initial, conservé pour référence.
+
+---
+
+## ⚛️ Application React (`web/`)
+
+```bash
+# 1. Régénérer les données JSON depuis les Excel (si data/*.xlsx a changé)
+./.venv/Scripts/python.exe scripts/export_json.py
+
+# 2. Installer les dépendances et lancer le serveur de dev
+cd web
+npm install
+npm run dev
+```
+
+L'app s'ouvre sur http://localhost:5173. Les données sont statiques (`web/src/data/taxa.json`, générées par `scripts/export_json.py`) — pas de backend.
+
+Identité visuelle : voir `ICHNOSEN/Identité Visuelle/Brandboard.pdf` (palette, logo). La police d'affichage "Bogart" n'étant pas fournie/libre, un serif chaleureux équivalent ("Fraunces") est utilisé en attendant.
+
+---
+
+## 🐍 Prototype Streamlit (racine)
+
+> ⚠️ La page **Carte** de ce prototype est cassée avec les versions récentes de Plotly (`scatter_mapbox` retiré dans Plotly 7). Non corrigé puisque superseded par `web/`.
 
 ---
 

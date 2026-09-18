@@ -1,0 +1,130 @@
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --page-plane: #0e0c0a;
+  --surface-1: #17140f;
+  --surface-2: #1e1a14;
+  --surface-3: #262019;
+
+  /* Ink */
+  --text-primary: #ece6de;
+  --text-secondary: #b3a99b;
+  --text-muted: #746b5f;
+  --gridline: #2a251e;
+  --baseline: #3a3327;
+  --border: rgba(255, 255, 255, 0.08);
+
+  /* Brand */
+  --brand-copper: #c5782d;
+  --brand-cream: #d6ccc2;
+  --brand-black: #000000;
+
+  /* Categorical (validated: adjacent-safe for all 6, all-pairs-safe for the first 3) */
+  --series-1: #c5782d; /* copper — brand */
+  --series-2: #2f9e8f; /* teal */
+  --series-3: #7a5fb0; /* violet */
+  --series-4: #c0524f; /* rose */
+  --series-5: #a8932c; /* olive-gold */
+  --series-6: #3d7ab8; /* blue */
+
+  /* Sequential (single hue: copper), low -> high magnitude */
+  --seq-1: #3a2c1c;
+  --seq-2: #6b4a26;
+  --seq-3: #96612c;
+  --seq-4: #c5782d;
+  --seq-5: #e6a355;
+
+  /* Status (fixed, never themed) */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --font-display: "Fraunces", "Times New Roman", serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+body {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+a {
+  color: var(--brand-copper);
+  text-decoration: none;
+}
+
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--brand-copper);
+  color: #17140f;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+/* Recolors free OpenStreetMap raster tiles to match the dark theme
+   (no dark basemap is available without a paid/keyed provider). */
+.map-tiles-dark {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.9);
+}
+
+/* "Export en PDF" uses the browser's native print-to-PDF: only the fiche
+   is shown, repainted on a light surface since dark-mode ink doesn't print. */
+@media print {
+  :root {
+    --page-plane: #ffffff;
+    --surface-1: #ffffff;
+    --surface-2: #f4f1ec;
+    --surface-3: #ece7dd;
+    --text-primary: #1a1512;
+    --text-secondary: #4a4038;
+    --text-muted: #7a6f63;
+    --gridline: #ddd6cb;
+    --border: rgba(0, 0, 0, 0.15);
+    --brand-cream: #1a1512;
+  }
+  aside,
+  .print-hide {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .print-area {
+    border: none !important;
+  }
+}
