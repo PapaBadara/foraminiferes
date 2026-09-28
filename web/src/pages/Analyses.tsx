@@ -1,7 +1,6 @@
 import { ResponsiveSunburst } from "@nivo/sunburst";
 import { ResponsiveTreeMap } from "@nivo/treemap";
 import { ResponsiveBar } from "@nivo/bar";
-import { ResponsiveScatterPlot } from "@nivo/scatterplot";
 import { BarChart3, Box, Waves, Layers } from "lucide-react";
 import { useData } from "../context/DataContext";
 import { SectionTitle } from "../components/KpiCard";
@@ -11,6 +10,7 @@ import { Tabs } from "../components/Tabs";
 import { buildTree } from "../lib/hierarchy";
 import { SERIES_HEX, SEQUENTIAL_HEX, capCategories } from "../lib/colors";
 import { nivoTheme, chartTooltip } from "../lib/nivoTheme";
+import type { Occurrence } from "../types";
 
 export function Analyses() {
   const { filtered } = useData();
@@ -29,12 +29,12 @@ export function Analyses() {
   );
 }
 
-function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
-  const sunburstData = { id: "root", children: buildTree(rows, ["Source", "Classe", "Type"]) };
+function TaxonomieTab({ rows }: { rows: Occurrence[] }) {
+  const sunburstData = { id: "root", children: buildTree(rows, ["groupe", "classe", "groupe_ordre"]) };
 
   const ordreCounts = new Map<string, number>();
   rows.forEach((r) => {
-    const o = r["Groupe/Ordre"];
+    const o = r.groupe_ordre;
     if (o) ordreCounts.set(o, (ordreCounts.get(o) ?? 0) + 1);
   });
   const ordreData = Array.from(ordreCounts.entries())
@@ -43,21 +43,21 @@ function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }
     .slice(0, 10)
     .reverse();
 
-  const embTree = { id: "root", children: buildTree(rows, ["Règne", "Embranchement"]) };
+  const embTree = { id: "root", children: buildTree(rows, ["regne", "embranchement"]) };
 
-  const classes = Array.from(new Set(rows.map((r) => r.Classe).filter((c): c is string => !!c)));
-  const sources = Array.from(new Set(rows.map((r) => r.Source))).sort();
+  const classes = Array.from(new Set(rows.map((r) => r.classe).filter((c): c is string => !!c)));
+  const bassins = Array.from(new Set(rows.map((r) => r.bassin))).sort();
   const pivot = classes.map((cl) => {
     const row: Record<string, string | number> = { Classe: cl };
-    sources.forEach((s) => {
-      row[s] = rows.filter((r) => r.Classe === cl && r.Source === s).length;
+    bassins.forEach((b) => {
+      row[b as string] = rows.filter((r) => r.classe === cl && r.bassin === b).length;
     });
     return row;
   });
 
   return (
     <div>
-      <SectionTitle>Hiérarchie taxonomique</SectionTitle>
+      <SectionTitle>Hiérarchie taxonomique (groupe → classe → ordre)</SectionTitle>
       <ChartCard height={420}>
         <ResponsiveSunburst
           data={sunburstData}
@@ -84,7 +84,7 @@ function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }
               keys={["n"]}
               indexBy="ordre"
               layout="horizontal"
-              margin={{ top: 10, right: 20, bottom: 30, left: 140 }}
+              margin={{ top: 10, right: 20, bottom: 30, left: 160 }}
               padding={0.25}
               colors={[SEQUENTIAL_HEX[3]]}
               enableLabel
@@ -113,15 +113,15 @@ function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }
       </div>
 
       <SectionTitle>
-        <span style={{ display: "block", marginTop: 32 }}>Nombre de taxons : Classe × Source</span>
+        <span style={{ display: "block", marginTop: 32 }}>Nombre d'occurrences : Classe × Bassin</span>
       </SectionTitle>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}>
             <th style={{ textAlign: "left", padding: "8px 12px" }}>Classe</th>
-            {sources.map((s) => (
-              <th key={s} style={{ textAlign: "right", padding: "8px 12px" }}>
-                {s}
+            {bassins.map((b) => (
+              <th key={b} style={{ textAlign: "right", padding: "8px 12px" }}>
+                {b}
               </th>
             ))}
           </tr>
@@ -130,9 +130,9 @@ function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }
           {pivot.map((row) => (
             <tr key={row.Classe as string} style={{ borderBottom: "1px solid var(--gridline)" }}>
               <td style={{ padding: "8px 12px" }}>{row.Classe}</td>
-              {sources.map((s) => (
-                <td key={s} style={{ textAlign: "right", padding: "8px 12px" }}>
-                  {row[s]}
+              {bassins.map((b) => (
+                <td key={b} style={{ textAlign: "right", padding: "8px 12px" }}>
+                  {row[b as string]}
                 </td>
               ))}
             </tr>
@@ -143,10 +143,10 @@ function TaxonomieTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }
   );
 }
 
-function EnvTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
+function EnvTab({ rows }: { rows: Occurrence[] }) {
   const envCounts = new Map<string, number>();
   rows.forEach((r) => {
-    const e = r["Paléoenvironnement"];
+    const e = r.paleoenv;
     if (e) envCounts.set(e, (envCounts.get(e) ?? 0) + 1);
   });
   const envData = Array.from(envCounts.entries())
@@ -155,18 +155,18 @@ function EnvTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
     .slice(0, 12)
     .reverse();
 
-  const sources = Array.from(new Set(rows.map((r) => r.Source))).sort();
+  const bassins = Array.from(new Set(rows.map((r) => r.bassin).filter((b): b is string => !!b))).sort();
   const capped = capCategories(
     Array.from(envCounts.entries()).map(([label, value]) => ({ label, value }))
   );
   const keptEnvs = new Set(capped.filter((c) => c.label !== "Autres").map((c) => c.label));
 
-  const envSrcData = sources.map((src) => {
-    const row: Record<string, string | number> = { source: src };
-    const rowsForSrc = rows.filter((r) => r.Source === src);
+  const envSrcData = bassins.map((b) => {
+    const row: Record<string, string | number> = { bassin: b };
+    const rowsForB = rows.filter((r) => r.bassin === b);
     let autres = 0;
-    rowsForSrc.forEach((r) => {
-      const e = r["Paléoenvironnement"];
+    rowsForB.forEach((r) => {
+      const e = r.paleoenv;
       if (!e) return;
       if (keptEnvs.has(e)) {
         row[e] = ((row[e] as number) ?? 0) + 1;
@@ -178,6 +178,10 @@ function EnvTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
     return row;
   });
   const envKeys = [...Array.from(keptEnvs), ...(envSrcData.some((r) => "Autres" in r) ? ["Autres"] : [])];
+
+  if (envData.length === 0) {
+    return <p style={{ color: "var(--text-muted)" }}>Aucune donnée de paléoenvironnement pour les filtres sélectionnés.</p>;
+  }
 
   return (
     <div>
@@ -197,14 +201,14 @@ function EnvTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
       </ChartCard>
 
       <SectionTitle>
-        <span style={{ display: "block", marginTop: 32 }}>Environnement par source</span>
+        <span style={{ display: "block", marginTop: 32 }}>Environnement par bassin</span>
       </SectionTitle>
       <ChartCard height={380}>
         <ResponsiveBar
           data={envSrcData}
           theme={nivoTheme}
           keys={envKeys}
-          indexBy="source"
+          indexBy="bassin"
           margin={{ top: 10, right: 260, bottom: 40, left: 40 }}
           padding={0.3}
           colors={SERIES_HEX}
@@ -227,39 +231,32 @@ function EnvTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
   );
 }
 
-function StratiTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
-  const sources = Array.from(new Set(rows.map((r) => r.Source))).sort();
-  const biozones = Array.from(new Set(rows.map((r) => r.Biozones).filter((b): b is string => !!b)));
+function StratiTab({ rows }: { rows: Occurrence[] }) {
+  const bassins = Array.from(new Set(rows.map((r) => r.bassin).filter((b): b is string => !!b))).sort();
+  const biozones = Array.from(new Set(rows.map((r) => r.biozones).filter((b): b is string => !!b)));
   const biozoneData = biozones.map((bz) => {
     const row: Record<string, string | number> = { biozone: bz };
-    sources.forEach((s) => {
-      row[s] = rows.filter((r) => r.Biozones === bz && r.Source === s).length;
+    bassins.forEach((b) => {
+      row[b] = rows.filter((r) => r.biozones === bz && r.bassin === b).length;
     });
     return row;
   });
 
-  const prof = rows.filter(
-    (r) => r["Année"] === 2009 && r.From_m !== null && r.To_m !== null
-  );
-  const types = Array.from(new Set(prof.map((r) => r.Type).filter((t): t is string => !!t)));
-  const scatterData = types.map((type) => ({
-    id: type,
-    data: prof
-      .filter((r) => r.Type === type)
-      .map((r) => ({ x: r.From_m as number, y: r.Nom_taxon ?? "" })),
-  }));
+  if (biozones.length === 0) {
+    return <p style={{ color: "var(--text-muted)" }}>Aucune donnée de biozone pour les filtres sélectionnés.</p>;
+  }
 
   return (
     <div>
-      <SectionTitle>Distribution des biozones par source</SectionTitle>
+      <SectionTitle>Distribution des biozones par bassin</SectionTitle>
       <ChartCard height={380}>
         <ResponsiveBar
           data={biozoneData}
           theme={nivoTheme}
-          keys={sources}
+          keys={bassins}
           indexBy="biozone"
           groupMode="grouped"
-          margin={{ top: 10, right: 200, bottom: 60, left: 40 }}
+          margin={{ top: 10, right: 200, bottom: 80, left: 40 }}
           padding={0.3}
           colors={SERIES_HEX}
           axisBottom={{ tickRotation: -40 }}
@@ -278,39 +275,6 @@ function StratiTab({ rows }: { rows: ReturnType<typeof useData>["filtered"] }) {
           ]}
         />
       </ChartCard>
-
-      <SectionTitle>
-        <span style={{ display: "block", marginTop: 32 }}>
-          Profondeur stratigraphique (site 2009 – Lac Retba)
-        </span>
-      </SectionTitle>
-      {prof.length > 0 ? (
-        <ChartCard height={Math.max(300, prof.length * 26)}>
-          <ResponsiveScatterPlot
-            data={scatterData}
-            theme={nivoTheme}
-            margin={{ top: 20, right: 120, bottom: 50, left: 200 }}
-            xScale={{ type: "linear" }}
-            yScale={{ type: "point" }}
-            colors={SERIES_HEX}
-            axisBottom={{ legend: "Profondeur (m)", legendPosition: "middle", legendOffset: 40 }}
-            nodeSize={10}
-            legends={[
-              {
-                anchor: "right",
-                direction: "column",
-                translateX: 110,
-                itemWidth: 100,
-                itemHeight: 20,
-                itemTextColor: "var(--text-secondary)",
-                symbolSize: 10,
-              },
-            ]}
-          />
-        </ChartCard>
-      ) : (
-        <p style={{ color: "var(--text-muted)" }}>Aucune donnée de profondeur disponible pour les filtres sélectionnés.</p>
-      )}
     </div>
   );
 }

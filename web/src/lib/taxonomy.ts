@@ -1,11 +1,17 @@
-import type { Taxon } from "../types";
+import type { TaxonGroup } from "../types";
 
-/** The data has no separate Genre/Famille columns — Nom_taxon is "Genre espèce...".
+/** The data has no separate Genre/Famille columns — nom_taxon is "Genre espèce...".
  *  We derive the genus as its first token, which is the closest honest proxy
  *  to the charter's "genre → famille → ordre" browser without fabricating data. */
 export function deriveGenre(nomTaxon: string | null): string {
   if (!nomTaxon) return "?";
-  return nomTaxon.trim().split(/\s+/)[0];
+  return nomTaxon.trim().replace(/^"/, "").split(/\s+/)[0];
+}
+
+export interface GroupeNode {
+  groupe: string;
+  count: number;
+  ordres: OrdreNode[];
 }
 
 export interface OrdreNode {
@@ -17,29 +23,41 @@ export interface OrdreNode {
 export interface GenreNode {
   genre: string;
   count: number;
-  taxa: Taxon[];
+  taxa: TaxonGroup[];
 }
 
-export function buildTaxonomyTree(rows: Taxon[]): OrdreNode[] {
-  const byOrdre = new Map<string, Taxon[]>();
-  rows.forEach((row) => {
-    const ordre = row["Groupe/Ordre"] ?? "Non renseigné";
-    if (!byOrdre.has(ordre)) byOrdre.set(ordre, []);
-    byOrdre.get(ordre)!.push(row);
+export function buildTaxonomyTree(taxa: TaxonGroup[]): GroupeNode[] {
+  const byGroupe = new Map<string, TaxonGroup[]>();
+  taxa.forEach((t) => {
+    if (!byGroupe.has(t.groupe)) byGroupe.set(t.groupe, []);
+    byGroupe.get(t.groupe)!.push(t);
   });
 
-  return Array.from(byOrdre.entries())
-    .map(([ordre, ordreRows]) => {
-      const byGenre = new Map<string, Taxon[]>();
-      ordreRows.forEach((row) => {
-        const genre = deriveGenre(row.Nom_taxon);
-        if (!byGenre.has(genre)) byGenre.set(genre, []);
-        byGenre.get(genre)!.push(row);
+  return Array.from(byGroupe.entries())
+    .map(([groupe, groupeTaxa]) => {
+      const byOrdre = new Map<string, TaxonGroup[]>();
+      groupeTaxa.forEach((t) => {
+        const ordre = t.groupe_ordre ?? "Non renseigné";
+        if (!byOrdre.has(ordre)) byOrdre.set(ordre, []);
+        byOrdre.get(ordre)!.push(t);
       });
-      const genres = Array.from(byGenre.entries())
-        .map(([genre, taxa]) => ({ genre, count: taxa.length, taxa }))
-        .sort((a, b) => a.genre.localeCompare(b.genre, "fr"));
-      return { ordre, count: ordreRows.length, genres };
+
+      const ordres = Array.from(byOrdre.entries())
+        .map(([ordre, ordreTaxa]) => {
+          const byGenre = new Map<string, TaxonGroup[]>();
+          ordreTaxa.forEach((t) => {
+            const genre = deriveGenre(t.nom_taxon);
+            if (!byGenre.has(genre)) byGenre.set(genre, []);
+            byGenre.get(genre)!.push(t);
+          });
+          const genres = Array.from(byGenre.entries())
+            .map(([genre, taxa]) => ({ genre, count: taxa.length, taxa }))
+            .sort((a, b) => a.genre.localeCompare(b.genre, "fr"));
+          return { ordre, count: ordreTaxa.length, genres };
+        })
+        .sort((a, b) => b.count - a.count);
+
+      return { groupe, count: groupeTaxa.length, ordres };
     })
     .sort((a, b) => b.count - a.count);
 }

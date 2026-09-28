@@ -1,65 +1,75 @@
 import { ResponsivePie } from "@nivo/pie";
 import { ResponsiveBar } from "@nivo/bar";
-import { useData } from "../context/DataContext";
+import { groupByTaxon, useData } from "../context/DataContext";
 import { KpiCard, SectionTitle } from "../components/KpiCard";
 import { SERIES_HEX } from "../lib/colors";
 import { nivoTheme, chartTooltip } from "../lib/nivoTheme";
 
 export function Home() {
   const { filtered } = useData();
+  const taxa = groupByTaxon(filtered);
 
-  const nSources = new Set(filtered.map((t) => t.Source)).size;
-  const nTypes = new Set(filtered.map((t) => t.Type).filter(Boolean)).size;
-  const nAges = new Set(filtered.map((t) => t["Age_géologique"]).filter(Boolean)).size;
+  const nBassins = new Set(filtered.map((t) => t.bassin).filter(Boolean)).size;
+  const nGroupes = new Set(filtered.map((t) => t.groupe)).size;
+  const nAges = new Set(filtered.map((t) => t.age).filter(Boolean)).size;
 
-  const typeCounts = new Map<string, number>();
-  filtered.forEach((t) => {
-    if (!t.Type) return;
-    typeCounts.set(t.Type, (typeCounts.get(t.Type) ?? 0) + 1);
+  const groupeCounts = new Map<string, number>();
+  taxa.forEach((t) => {
+    groupeCounts.set(t.groupe, (groupeCounts.get(t.groupe) ?? 0) + 1);
   });
-  const pieData = Array.from(typeCounts.entries()).map(([id, value]) => ({ id, label: id, value }));
+  const pieData = Array.from(groupeCounts.entries()).map(([id, value]) => ({ id, label: id, value }));
 
-  const sources = Array.from(new Set(filtered.map((t) => t.Source))).sort();
-  const ages = Array.from(new Set(filtered.map((t) => t["Age_géologique"]).filter((a): a is string => !!a)));
-  const barData = ages.map((age) => {
+  const bassins = Array.from(new Set(filtered.map((t) => t.bassin).filter((b): b is string => !!b))).sort();
+  const ageCounts = new Map<string, number>();
+  filtered.forEach((t) => {
+    if (t.age) ageCounts.set(t.age, (ageCounts.get(t.age) ?? 0) + 1);
+  });
+  // Les âges sont du texte libre (70+ intitulés stratigraphiques distincts) :
+  // on limite aux plus fréquents pour garder l'axe lisible.
+  const topAges = Array.from(ageCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([age]) => age);
+  const barData = topAges.map((age) => {
     const row: Record<string, string | number> = { age };
-    sources.forEach((src) => {
-      row[src] = filtered.filter((t) => t["Age_géologique"] === age && t.Source === src).length;
+    bassins.forEach((b) => {
+      row[b] = filtered.filter((t) => t.age === age && t.bassin === b).length;
     });
     return row;
   });
 
-  const summary = sources.map((src) => {
-    const rows = filtered.filter((t) => t.Source === src);
+  const summary = bassins.map((b) => {
+    const rows = filtered.filter((t) => t.bassin === b);
+    const rowTaxa = groupByTaxon(rows);
     return {
-      Source: src,
-      Taxons: rows.length,
-      Types: new Set(rows.map((r) => r.Type).filter(Boolean)).size,
-      Classes: new Set(rows.map((r) => r.Classe).filter(Boolean)).size,
-      Ages: new Set(rows.map((r) => r["Age_géologique"]).filter(Boolean)).size,
+      Bassin: b,
+      Taxons: rowTaxa.length,
+      Occurrences: rows.length,
+      Classes: new Set(rows.map((r) => r.classe).filter(Boolean)).size,
+      Ages: new Set(rows.map((r) => r.age).filter(Boolean)).size,
     };
   });
 
   return (
     <div>
       <h1 style={{ fontSize: 32, color: "var(--brand-cream)", marginBottom: 8 }}>
-        Ichnosen — Bassin sénégalo-mauritanien
+        Ichnosen — Microfossiles du Sénégal
       </h1>
       <p style={{ color: "var(--text-secondary)", maxWidth: 680, marginBottom: 28 }}>
-        Base de données de foraminifères découverts le long des côtes sénégalaises
-        (Popenguine 1998 · Toubab Dialaw 2000 · Lac Retba 2009).
+        Base de données consolidée de foraminifères et ostracodes issus des travaux de Sarr et al.
+        (1998–2023) sur les bassins sénégalo-mauritanien et de Casamance.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
-        <KpiCard value={filtered.length} label="Taxons filtrés" />
-        <KpiCard value={nSources} label="Sites / publications" />
-        <KpiCard value={nTypes} label="Types de foraminifères" />
+        <KpiCard value={taxa.length} label="Taxons filtrés" />
+        <KpiCard value={filtered.length} label="Occurrences" />
+        <KpiCard value={nBassins} label="Bassins" />
         <KpiCard value={nAges} label="Âges géologiques" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24, marginBottom: 32 }}>
         <div>
-          <SectionTitle>Répartition par type</SectionTitle>
+          <SectionTitle>Répartition par groupe</SectionTitle>
           <div style={{ height: 300, background: "var(--surface-1)", borderRadius: 12, border: "1px solid var(--border)" }}>
             <ResponsivePie
               data={pieData}
@@ -79,7 +89,7 @@ export function Home() {
                   anchor: "bottom",
                   direction: "row",
                   translateY: 36,
-                  itemWidth: 90,
+                  itemWidth: 110,
                   itemHeight: 18,
                   itemTextColor: "var(--text-secondary)",
                   symbolSize: 10,
@@ -90,53 +100,57 @@ export function Home() {
           </div>
         </div>
         <div>
-          <SectionTitle>Distribution par âge géologique &amp; source</SectionTitle>
+          <SectionTitle>Distribution par âge géologique &amp; bassin (12 âges les plus fréquents)</SectionTitle>
           <div style={{ height: 300, background: "var(--surface-1)", borderRadius: 12, border: "1px solid var(--border)", padding: "8px 8px 0" }}>
-            <ResponsiveBar
-              data={barData}
-              theme={nivoTheme}
-              keys={sources}
-              indexBy="age"
-              margin={{ top: 10, right: 200, bottom: 60, left: 40 }}
-              padding={0.3}
-              colors={SERIES_HEX}
-              axisBottom={{ tickRotation: -35 }}
-              enableLabel={false}
-              tooltip={chartTooltip}
-              legends={[
-                {
-                  dataFrom: "keys",
-                  anchor: "right",
-                  direction: "column",
-                  translateX: 190,
-                  itemWidth: 180,
-                  itemHeight: 22,
-                  itemTextColor: "var(--text-secondary)",
-                  symbolSize: 10,
-                },
-              ]}
-            />
+            {nGroupes === 0 || topAges.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", padding: 16 }}>Aucune donnée pour les filtres sélectionnés.</p>
+            ) : (
+              <ResponsiveBar
+                data={barData}
+                theme={nivoTheme}
+                keys={bassins}
+                indexBy="age"
+                margin={{ top: 10, right: 200, bottom: 90, left: 40 }}
+                padding={0.3}
+                colors={SERIES_HEX}
+                axisBottom={{ tickRotation: -35 }}
+                enableLabel={false}
+                tooltip={chartTooltip}
+                legends={[
+                  {
+                    dataFrom: "keys",
+                    anchor: "right",
+                    direction: "column",
+                    translateX: 190,
+                    itemWidth: 180,
+                    itemHeight: 22,
+                    itemTextColor: "var(--text-secondary)",
+                    symbolSize: 10,
+                  },
+                ]}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      <SectionTitle>Résumé par source</SectionTitle>
+      <SectionTitle>Résumé par bassin</SectionTitle>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-            <th style={{ textAlign: "left", padding: "8px 12px" }}>Source</th>
+            <th style={{ textAlign: "left", padding: "8px 12px" }}>Bassin</th>
             <th style={{ textAlign: "right", padding: "8px 12px" }}>Taxons</th>
-            <th style={{ textAlign: "right", padding: "8px 12px" }}>Types uniques</th>
+            <th style={{ textAlign: "right", padding: "8px 12px" }}>Occurrences</th>
             <th style={{ textAlign: "right", padding: "8px 12px" }}>Classes</th>
             <th style={{ textAlign: "right", padding: "8px 12px" }}>Âges</th>
           </tr>
         </thead>
         <tbody>
           {summary.map((row) => (
-            <tr key={row.Source} style={{ borderBottom: "1px solid var(--gridline)" }}>
-              <td style={{ padding: "8px 12px" }}>{row.Source}</td>
+            <tr key={row.Bassin} style={{ borderBottom: "1px solid var(--gridline)" }}>
+              <td style={{ padding: "8px 12px" }}>{row.Bassin}</td>
               <td style={{ textAlign: "right", padding: "8px 12px" }}>{row.Taxons}</td>
-              <td style={{ textAlign: "right", padding: "8px 12px" }}>{row.Types}</td>
+              <td style={{ textAlign: "right", padding: "8px 12px" }}>{row.Occurrences}</td>
               <td style={{ textAlign: "right", padding: "8px 12px" }}>{row.Classes}</td>
               <td style={{ textAlign: "right", padding: "8px 12px" }}>{row.Ages}</td>
             </tr>

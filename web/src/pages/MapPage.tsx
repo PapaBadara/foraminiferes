@@ -1,61 +1,53 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Map as MapIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Map as MapIcon } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { useData } from "../context/DataContext";
-import { SectionTitle } from "../components/KpiCard";
 import { PageTitle } from "../components/PageTitle";
 import { colorScaleFor } from "../lib/colors";
 
-const CENTER: [number, number] = [14.65, -17.2];
+const CENTER: [number, number] = [14.3, -16.5];
 
 export function MapPage() {
   const { filtered } = useData();
-  const [selectedSite, setSelectedSite] = useState<string | null>(null);
+  const [showSites, setShowSites] = useState(false);
 
   const geo = useMemo(
     () => filtered.filter((t) => t.latitude !== null && t.longitude !== null),
     [filtered]
   );
 
-  const sources = useMemo(() => Array.from(new Set(geo.map((t) => t.Source))).sort(), [geo]);
-  const colorFor = useMemo(() => colorScaleFor(sources), [sources]);
+  const bassins = useMemo(() => Array.from(new Set(geo.map((t) => t.bassin).filter((b): b is string => !!b))).sort(), [geo]);
+  const colorFor = useMemo(() => colorScaleFor(bassins), [bassins]);
 
   const sites = useMemo(() => {
     const groups = new Map<string, typeof geo>();
     geo.forEach((row) => {
-      const key = `${row["Lieu_découverte"]}__${row.Source}`;
+      const key = `${row.locality_nom}__${row.locality_id}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(row);
     });
     return Array.from(groups.entries())
       .map(([key, rows]) => {
-        const [lieu, source] = key.split("__");
-        const types = Array.from(new Set(rows.map((r) => r.Type).filter(Boolean))).sort().join(", ");
-        const ages = Array.from(new Set(rows.map((r) => r["Age_géologique"]).filter(Boolean))).sort().join(" | ");
+        const [lieu] = key.split("__");
+        const groupes = Array.from(new Set(rows.map((r) => r.groupe))).sort().join(", ");
+        const ages = Array.from(new Set(rows.map((r) => r.age).filter(Boolean))).sort().join(" | ");
         return {
           lieu,
-          source,
+          bassin: rows[0].bassin,
           taxons: rows.length,
           lat: rows[0].latitude!,
           lon: rows[0].longitude!,
-          types,
+          groupes,
           ages,
         };
       })
       .sort((a, b) => b.taxons - a.taxons);
   }, [geo]);
-
-  const lieux = useMemo(
-    () => Array.from(new Set(geo.map((t) => t["Lieu_découverte"]).filter((l): l is string => !!l))).sort(),
-    [geo]
-  );
-
-  const siteDetail = geo.filter((t) => t["Lieu_découverte"] === (selectedSite ?? lieux[0]));
 
   if (geo.length === 0) {
     return (
@@ -72,7 +64,7 @@ export function MapPage() {
     <div>
       <PageTitle icon={MapIcon}>Carte des découvertes paléontologiques</PageTitle>
       <p style={{ color: "var(--text-secondary)", marginBottom: 16 }}>
-        Localisation des sites de découverte des foraminifères le long de la côte sénégalaise.
+        Localisation des sites de découverte des foraminifères et ostracodes au Sénégal.
       </p>
 
       <p
@@ -86,13 +78,12 @@ export function MapPage() {
           marginBottom: 20,
         }}
       >
-        <strong style={{ color: "var(--brand-cream)" }}>{geo.length}</strong> taxons géolocalisés sur{" "}
-        <strong style={{ color: "var(--brand-cream)" }}>{filtered.length}</strong> — un point par site
-        (les coordonnées ne sont saisies qu'une fois par lieu de découverte dans les données sources).
+        <strong style={{ color: "var(--brand-cream)" }}>{geo.length}</strong> occurrences géolocalisées sur{" "}
+        <strong style={{ color: "var(--brand-cream)" }}>{filtered.length}</strong> — un point par localité.
       </p>
 
       <div style={{ height: 540, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", marginBottom: 32 }}>
-        <MapContainer center={CENTER} zoom={8} style={{ height: "100%", width: "100%", background: "var(--surface-1)" }}>
+        <MapContainer center={CENTER} zoom={7} style={{ height: "100%", width: "100%", background: "var(--surface-1)" }}>
           <TileLayer
             className="map-tiles-dark"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -105,22 +96,22 @@ export function MapPage() {
                 center={[row.latitude!, row.longitude!]}
                 radius={9}
                 pathOptions={{
-                  color: colorFor[row.Source],
-                  fillColor: colorFor[row.Source],
+                  color: colorFor[row.bassin ?? ""],
+                  fillColor: colorFor[row.bassin ?? ""],
                   fillOpacity: 0.85,
                   weight: 1,
                 }}
               >
                 <Popup>
-                  <strong>{row.Nom_taxon}</strong>
+                  <strong>{row.nom_taxon}</strong>
                   <br />
-                  {row.Type} · {row["Age_géologique"]}
+                  {row.groupe} · {row.age}
                   <br />
-                  {row["Lieu_découverte"]}
+                  {row.locality_nom}
                   <br />
-                  <em>{row.Source}</em>
+                  <em>{row.bassin}</em>
                   <br />
-                  <Link to={`/catalogue?taxon=${row.id}`} style={{ fontSize: 12 }}>
+                  <Link to={`/catalogue?taxon=${row.taxon_id}`} style={{ fontSize: 12 }}>
                     Voir la fiche →
                   </Link>
                 </Popup>
@@ -130,81 +121,51 @@ export function MapPage() {
         </MapContainer>
       </div>
 
-      <SectionTitle>Sites de découverte</SectionTitle>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 32 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Lieu</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Source</th>
-            <th style={{ textAlign: "right", padding: "8px 10px" }}>Taxons</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Types</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Âges</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sites.map((s) => (
-            <tr key={`${s.lieu}-${s.source}`} style={{ borderBottom: "1px solid var(--gridline)" }}>
-              <td style={{ padding: "7px 10px" }}>{s.lieu}</td>
-              <td style={{ padding: "7px 10px" }}>{s.source}</td>
-              <td style={{ textAlign: "right", padding: "7px 10px" }}>{s.taxons}</td>
-              <td style={{ padding: "7px 10px" }}>{s.types}</td>
-              <td style={{ padding: "7px 10px" }}>{s.ages}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <SectionTitle>Explorer un site</SectionTitle>
-      <select
-        value={selectedSite ?? lieux[0]}
-        onChange={(e) => setSelectedSite(e.target.value)}
+      <button
+        onClick={() => setShowSites((v) => !v)}
+        aria-expanded={showSites}
         style={{
-          padding: "8px 12px",
-          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
           border: "1px solid var(--border)",
-          background: "var(--surface-1)",
-          color: "var(--text-primary)",
+          background: showSites ? "rgba(197, 120, 45, 0.18)" : "transparent",
+          color: "var(--brand-cream)",
+          borderRadius: 999,
+          padding: "6px 14px",
+          fontSize: 13,
+          cursor: "pointer",
           marginBottom: 16,
         }}
       >
-        {lieux.map((l) => (
-          <option key={l} value={l}>
-            {l}
-          </option>
-        ))}
-      </select>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 12 }}>
-        <strong style={{ color: "var(--brand-cream)" }}>{siteDetail.length} taxons</strong> découverts à{" "}
-        <em>{selectedSite ?? lieux[0]}</em>
-      </p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Nom_taxon</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Type</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Classe</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Âge géologique</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Découvreur</th>
-            <th style={{ textAlign: "left", padding: "8px 10px" }}>Paléoenvironnement</th>
-            <th style={{ padding: "8px 10px" }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {siteDetail.map((row) => (
-            <tr key={row.id} style={{ borderBottom: "1px solid var(--gridline)" }}>
-              <td style={{ padding: "7px 10px" }}>{row.Nom_taxon}</td>
-              <td style={{ padding: "7px 10px" }}>{row.Type}</td>
-              <td style={{ padding: "7px 10px" }}>{row.Classe}</td>
-              <td style={{ padding: "7px 10px" }}>{row["Age_géologique"]}</td>
-              <td style={{ padding: "7px 10px" }}>{row["Découvreur (auteur taxonomique)"]}</td>
-              <td style={{ padding: "7px 10px" }}>{row["Paléoenvironnement"]}</td>
-              <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
-                <Link to={`/catalogue?taxon=${row.id}`}>Fiche →</Link>
-              </td>
+        {showSites ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {showSites ? "Masquer" : "Afficher"} les sites de découverte ({sites.length})
+      </button>
+
+      {showSites && (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 32 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+              <th style={{ textAlign: "left", padding: "8px 10px" }}>Lieu</th>
+              <th style={{ textAlign: "left", padding: "8px 10px" }}>Bassin</th>
+              <th style={{ textAlign: "right", padding: "8px 10px" }}>Occurrences</th>
+              <th style={{ textAlign: "left", padding: "8px 10px" }}>Groupes</th>
+              <th style={{ textAlign: "left", padding: "8px 10px" }}>Âges</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sites.map((s) => (
+              <tr key={s.lieu} style={{ borderBottom: "1px solid var(--gridline)" }}>
+                <td style={{ padding: "7px 10px" }}>{s.lieu}</td>
+                <td style={{ padding: "7px 10px" }}>{s.bassin}</td>
+                <td style={{ textAlign: "right", padding: "7px 10px" }}>{s.taxons}</td>
+                <td style={{ padding: "7px 10px" }}>{s.groupes}</td>
+                <td style={{ padding: "7px 10px" }}>{s.ages}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

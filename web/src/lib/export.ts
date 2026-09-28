@@ -1,5 +1,3 @@
-import type { Taxon } from "../types";
-
 function downloadBlob(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -19,14 +17,14 @@ function csvEscape(value: unknown): string {
   return s;
 }
 
-export function exportCsv(rows: Taxon[], filename = "ichnosen-taxons.csv") {
+export function exportCsv<T extends object>(rows: T[], filename = "ichnosen-export.csv") {
   if (rows.length === 0) return;
-  const columns = Object.keys(rows[0]) as (keyof Taxon)[];
+  const columns = Object.keys(rows[0]) as (keyof T)[];
   const header = columns.join(",");
   const lines = rows.map((row) => columns.map((c) => csvEscape(row[c])).join(","));
   downloadBlob(filename, [header, ...lines].join("\n"), "text/csv;charset=utf-8");
 }
 
-export function exportJson(rows: Taxon[], filename = "ichnosen-taxons.json") {
+export function exportJson<T>(rows: T[], filename = "ichnosen-export.json") {
   downloadBlob(filename, JSON.stringify(rows, null, 2), "application/json;charset=utf-8");
 }

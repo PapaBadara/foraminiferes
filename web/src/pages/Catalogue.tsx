@@ -4,75 +4,94 @@ import {
   ClipboardList,
   Search,
   ListTree,
-  Printer,
   Microscope,
   MapPin,
   Clock,
-  Compass,
   FileText,
   Waves,
   Globe,
   StickyNote,
+  BookMarked,
   type LucideIcon,
 } from "lucide-react";
-import { useData } from "../context/DataContext";
+import { groupByTaxon, useData } from "../context/DataContext";
 import { SectionTitle } from "../components/KpiCard";
 import { PageTitle } from "../components/PageTitle";
 import { Tabs } from "../components/Tabs";
 import { TaxonTree } from "../components/TaxonTree";
 import { exportCsv, exportJson } from "../lib/export";
-import type { Taxon } from "../types";
+import type { Occurrence, TaxonGroup } from "../types";
 
-const DISPLAY_COLS: (keyof Taxon)[] = [
-  "Nom_taxon",
-  "Type",
-  "Age_géologique",
-  "Lieu_découverte",
-  "Source",
+const DISPLAY_COLS: { key: keyof TaxonGroup; label: string }[] = [
+  { key: "nom_taxon", label: "Nom_taxon" },
+  { key: "groupe", label: "Groupe" },
+  { key: "sous_type", label: "Sous-type" },
+  { key: "classe", label: "Classe" },
+  { key: "groupe_ordre", label: "Groupe/Ordre" },
+  { key: "decouvreur", label: "Découvreur" },
 ];
 
-const CLASSIFICATION_FIELDS: (keyof Taxon)[] = ["Règne", "Embranchement", "Classe", "Groupe/Ordre", "Type"];
-const LOCATION_FIELDS: (keyof Taxon)[] = ["Lieu_découverte", "Découvreur (auteur taxonomique)", "Auteur_site", "Source"];
-const STRATI_FIELDS: (keyof Taxon)[] = ["Age_géologique", "Biozones", "Stratigraphie", "From_m", "To_m"];
+const CLASSIFICATION_FIELDS: { key: keyof TaxonGroup; label: string }[] = [
+  { key: "regne", label: "Règne" },
+  { key: "embranchement", label: "Embranchement" },
+  { key: "classe", label: "Classe" },
+  { key: "groupe_ordre", label: "Groupe/Ordre" },
+  { key: "sous_type", label: "Sous-type" },
+  { key: "decouvreur", label: "Découvreur" },
+];
 
 export function Catalogue() {
   const { all, filtered } = useData();
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
 
+  const allTaxa = useMemo(() => groupByTaxon(all), [all]);
+  const filteredTaxa = useMemo(() => groupByTaxon(filtered), [filtered]);
+
   const directTaxonId = params.get("taxon");
-  const directTaxon = directTaxonId ? all.find((t) => String(t.id) === directTaxonId) ?? null : null;
-  const directOutsideFilters = !!directTaxon && !filtered.some((t) => t.id === directTaxon.id);
+  const directTaxon = directTaxonId ? allTaxa.find((t) => t.taxon_id === directTaxonId) ?? null : null;
+  const directOutsideFilters = !!directTaxon && !filteredTaxa.some((t) => t.taxon_id === directTaxon.taxon_id);
 
   useEffect(() => {
-    if (directTaxon) setSelected(directTaxon.id);
+    if (directTaxon) setSelected(directTaxon.taxon_id);
   }, [directTaxonId]);
 
   const results = useMemo(() => {
-    if (!search.trim()) return filtered;
+    if (!search.trim()) return filteredTaxa;
     const q = search.toLowerCase();
-    return filtered.filter((row) =>
-      Object.values(row).some((v) => v !== null && String(v).toLowerCase().includes(q))
+    return filteredTaxa.filter(
+      (taxon) =>
+        Object.values(taxon).some((v) => v !== null && typeof v !== "object" && String(v).toLowerCase().includes(q)) ||
+        taxon.occurrences.some((occ) =>
+          Object.values(occ).some((v) => v !== null && String(v).toLowerCase().includes(q))
+        )
     );
-  }, [filtered, search]);
+  }, [filteredTaxa, search]);
 
-  const detail = directTaxon ?? results.find((r) => r.id === selected) ?? results[0] ?? null;
+  const detail = directTaxon ?? results.find((r) => r.taxon_id === selected) ?? results[0] ?? null;
 
-  function selectFromTree(id: number) {
+  function selectFromTree(taxonId: string) {
     setParams({});
-    setSelected(id);
+    setSelected(taxonId);
   }
+
+  const exportRows = results.map((t) => ({
+    nom_taxon: t.nom_taxon,
+    groupe: t.groupe,
+    sous_type: t.sous_type,
+    classe: t.classe,
+    groupe_ordre: t.groupe_ordre,
+    decouvreur: t.decouvreur,
+    nb_occurrences: t.occurrences.length,
+  }));
 
   return (
     <div>
-      <div className="print-hide">
-        <PageTitle icon={ClipboardList}>Catalogue des taxons</PageTitle>
-      </div>
+      <PageTitle icon={ClipboardList}>Catalogue des taxons</PageTitle>
 
       {directOutsideFilters && (
         <p
-          className="print-hide"
           style={{
             background: "var(--surface-2)",
             border: "1px solid var(--brand-copper)",
@@ -93,7 +112,7 @@ export function Catalogue() {
         </p>
       )}
 
-      <div className="print-hide">
+      <div>
         <Tabs
           tabs={[
             {
@@ -112,7 +131,7 @@ export function Catalogue() {
                       />
                       <input
                         type="text"
-                        placeholder="Rechercher un taxon (nom, auteur, description…)"
+                        placeholder="Rechercher un taxon (nom, découvreur, description, site…)"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         style={{
@@ -130,8 +149,8 @@ export function Catalogue() {
                       <strong style={{ color: "var(--brand-cream)" }}>{results.length}</strong> résultats
                     </p>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <ExportButton label="CSV" onClick={() => exportCsv(results)} />
-                      <ExportButton label="JSON" onClick={() => exportJson(results)} />
+                      <ExportButton label="CSV" onClick={() => exportCsv(exportRows, "ichnosen-taxons.csv")} />
+                      <ExportButton label="JSON" onClick={() => exportJson(exportRows, "ichnosen-taxons.json")} />
                     </div>
                   </div>
 
@@ -150,7 +169,7 @@ export function Catalogue() {
                         <tr style={{ background: "var(--surface-1)", position: "sticky", top: 0 }}>
                           {DISPLAY_COLS.map((col) => (
                             <th
-                              key={col}
+                              key={col.key}
                               style={{
                                 textAlign: "left",
                                 padding: "8px 10px",
@@ -160,7 +179,7 @@ export function Catalogue() {
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {col}
+                              {col.label}
                             </th>
                           ))}
                         </tr>
@@ -168,21 +187,21 @@ export function Catalogue() {
                       <tbody>
                         {results.map((row) => (
                           <tr
-                            key={row.id}
+                            key={row.taxon_id}
                             onClick={() => {
                               setParams({});
-                              setSelected(row.id);
+                              setSelected(row.taxon_id);
                             }}
                             style={{
                               cursor: "pointer",
-                              background: row.id === detail?.id ? "var(--surface-2)" : "transparent",
+                              background: row.taxon_id === detail?.taxon_id ? "var(--surface-2)" : "transparent",
                               borderBottom: "1px solid var(--gridline)",
                             }}
                           >
                             {DISPLAY_COLS.map((col) => (
                               <td
-                                key={col}
-                                title={row[col] !== null ? String(row[col]) : undefined}
+                                key={col.key}
+                                title={row[col.key] !== null ? String(row[col.key]) : undefined}
                                 style={{
                                   padding: "7px 10px",
                                   overflow: "hidden",
@@ -190,7 +209,7 @@ export function Catalogue() {
                                   whiteSpace: "nowrap",
                                 }}
                               >
-                                {row[col] ?? "—"}
+                                {(row[col.key] as string) ?? "—"}
                               </td>
                             ))}
                           </tr>
@@ -207,9 +226,9 @@ export function Catalogue() {
               content: (
                 <div style={{ marginBottom: 32 }}>
                   <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 12 }}>
-                    Ordre → genre (dérivé du nom scientifique) → espèce. Cliquer une espèce ouvre sa fiche.
+                    Groupe → ordre → genre (dérivé du nom scientifique) → espèce. Cliquer une espèce ouvre sa fiche.
                   </p>
-                  <TaxonTree rows={filtered} onSelect={selectFromTree} />
+                  <TaxonTree taxa={filteredTaxa} onSelect={selectFromTree} />
                 </div>
               ),
             },
@@ -275,10 +294,9 @@ function FieldGroupTitle({ icon: Icon, children }: { icon: LucideIcon; children:
   );
 }
 
-function TaxonSheet({ taxon }: { taxon: Taxon }) {
+function TaxonSheet({ taxon }: { taxon: TaxonGroup }) {
   return (
     <div
-      className="print-area"
       style={{
         background: "var(--surface-1)",
         border: "1px solid var(--border)",
@@ -286,103 +304,101 @@ function TaxonSheet({ taxon }: { taxon: Taxon }) {
         padding: 24,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--brand-cream)", marginBottom: 16 }}>
-          {taxon.Nom_taxon}
-        </h2>
-        <button
-          className="print-hide"
-          onClick={() => window.print()}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            border: "1px solid var(--border)",
-            background: "var(--surface-2)",
-            color: "var(--text-secondary)",
-            borderRadius: 8,
-            padding: "6px 12px",
-            fontSize: 12,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <Printer size={14} strokeWidth={1.75} aria-hidden />
-          Exporter en PDF
-        </button>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+      <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--brand-cream)", marginBottom: 4 }}>
+        {taxon.nom_taxon}
+      </h2>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 16px" }}>
+        {taxon.occurrences.length} occurrence{taxon.occurrences.length > 1 ? "s" : ""}
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: taxon.photo ? "180px 1fr" : "1fr", gap: 24, marginBottom: 20 }}>
+        {taxon.photo && (
+          <img
+            src={taxon.photo}
+            alt={taxon.nom_taxon}
+            style={{
+              width: "100%",
+              height: 160,
+              objectFit: "contain",
+              background: "#ffffff",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+            }}
+          />
+        )}
         <div>
           <FieldGroupTitle icon={Microscope}>Classification</FieldGroupTitle>
-          {CLASSIFICATION_FIELDS.map((f) => (
-            <Field key={f} label={f} value={taxon[f]} />
-          ))}
-
-          <div style={{ marginTop: 20 }}>
-            <FieldGroupTitle icon={MapPin}>Localisation &amp; auteurs</FieldGroupTitle>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            {CLASSIFICATION_FIELDS.map((f) => (
+              <Field key={f.key} label={f.label} value={taxon[f.key]} />
+            ))}
           </div>
-          {LOCATION_FIELDS.map((f) => (
-            <Field key={f} label={f} value={taxon[f]} />
-          ))}
-        </div>
-
-        <div>
-          <FieldGroupTitle icon={Clock}>Chronostratigraphie</FieldGroupTitle>
-          {STRATI_FIELDS.map((f) => (
-            <Field key={f} label={f} value={taxon[f]} />
-          ))}
-
-          {taxon.latitude !== null && taxon.longitude !== null && (
-            <>
-              <div style={{ marginTop: 20 }}>
-                <FieldGroupTitle icon={Compass}>Coordonnées</FieldGroupTitle>
-              </div>
-              <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                Lat <strong style={{ color: "var(--text-primary)" }}>{taxon.latitude}</strong> / Lon{" "}
-                <strong style={{ color: "var(--text-primary)" }}>{taxon.longitude}</strong>
-              </p>
-            </>
-          )}
         </div>
       </div>
 
-      {taxon.Description && (
-        <div style={{ marginTop: 20 }}>
+      <FieldGroupTitle icon={MapPin}>{`Occurrences (${taxon.occurrences.length})`}</FieldGroupTitle>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {taxon.occurrences.map((occ) => (
+          <OccurrenceCard key={occ.id} occ={occ} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OccurrenceCard({ occ }: { occ: Occurrence }) {
+  return (
+    <div
+      style={{
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 16,
+      }}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 12 }}>
+        <div>
+          <FieldGroupTitle icon={Clock}>Contexte</FieldGroupTitle>
+          <Field label="Localité" value={occ.locality_nom} />
+          <Field label="Bassin" value={occ.bassin} />
+          <Field label="Âge géologique" value={occ.age} />
+          <Field label="Biozones" value={occ.biozones} />
+          <Field label="Stratigraphie" value={occ.stratigraphie} />
+          <Field label="Formation" value={occ.formation} />
+        </div>
+        <div>
+          <FieldGroupTitle icon={BookMarked}>Référence &amp; collection</FieldGroupTitle>
+          <Field label="Référence" value={occ.reference_citation} />
+          <Field label="N° collection" value={occ.n_collection} />
+        </div>
+      </div>
+
+      {occ.description && (
+        <div style={{ marginBottom: 12 }}>
           <FieldGroupTitle icon={FileText}>Description morphologique</FieldGroupTitle>
-          <p
-            style={{
-              background: "var(--surface-2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: 12,
-              fontSize: 14,
-              color: "var(--text-secondary)",
-            }}
-          >
-            {taxon.Description}
-          </p>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>{occ.description}</p>
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
-        {taxon["Paléoenvironnement"] && (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {occ.paleoenv && (
           <div>
             <FieldGroupTitle icon={Waves}>Paléoenvironnement</FieldGroupTitle>
-            <p style={{ fontSize: 14, color: "var(--status-good)" }}>{taxon["Paléoenvironnement"]}</p>
+            <p style={{ fontSize: 13, color: "var(--status-good)", margin: 0 }}>{occ.paleoenv}</p>
           </div>
         )}
-        {taxon["Paléogéographie"] && (
+        {occ.paleogeo && (
           <div>
             <FieldGroupTitle icon={Globe}>Paléogéographie</FieldGroupTitle>
-            <p style={{ fontSize: 14, color: "var(--status-good)" }}>{taxon["Paléogéographie"]}</p>
+            <p style={{ fontSize: 13, color: "var(--status-good)", margin: 0 }}>{occ.paleogeo}</p>
           </div>
         )}
       </div>
 
-      {taxon["Notes+"] && (
-        <div style={{ marginTop: 20 }}>
-          <FieldGroupTitle icon={StickyNote}>Notes complémentaires</FieldGroupTitle>
-          <p style={{ fontSize: 14, color: "var(--status-warning)" }}>{taxon["Notes+"]}</p>
+      {occ.notes && (
+        <div style={{ marginTop: 12 }}>
+          <FieldGroupTitle icon={StickyNote}>Notes</FieldGroupTitle>
+          <p style={{ fontSize: 13, color: "var(--status-warning)", margin: 0 }}>{occ.notes}</p>
         </div>
       )}
     </div>
